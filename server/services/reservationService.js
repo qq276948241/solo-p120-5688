@@ -121,19 +121,36 @@ const reservationService = {
     const whereClauses = []
     const params = []
 
-    if (book_id) {
+    if (book_id !== undefined && book_id !== '' && book_id !== null) {
+      const bookId = parseInt(book_id)
+      if (isNaN(bookId) || bookId <= 0) {
+        throw new ServiceError(400, 'book_id 参数无效')
+      }
       whereClauses.push('r.book_id = ?')
-      params.push(parseInt(book_id))
+      params.push(bookId)
     }
 
-    if (reserver_name) {
+    if (reserver_name && typeof reserver_name === 'string' && reserver_name.trim() !== '') {
       whereClauses.push('r.reserver_name LIKE ?')
-      params.push(`%${reserver_name}%`)
+      params.push(`%${reserver_name.trim()}%`)
     }
 
-    if (status !== undefined && status !== '') {
+    if (status !== undefined && status !== '' && status !== null) {
+      const statusNum = parseInt(status)
+      if (isNaN(statusNum) || statusNum < 1 || statusNum > 3) {
+        throw new ServiceError(400, 'status 参数无效，有效值为 1-3')
+      }
       whereClauses.push('r.status = ?')
-      params.push(parseInt(status))
+      params.push(statusNum)
+    }
+
+    const pageNum = parseInt(page)
+    const pageSizeNum = parseInt(pageSize)
+    if (isNaN(pageNum) || pageNum < 1) {
+      throw new ServiceError(400, 'page 参数无效')
+    }
+    if (isNaN(pageSizeNum) || pageSizeNum < 1 || pageSizeNum > 100) {
+      throw new ServiceError(400, 'pageSize 参数无效，范围 1-100')
     }
 
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
@@ -142,7 +159,7 @@ const reservationService = {
     const [countResult] = await pool.execute(countSql, params)
     const total = countResult[0].total
 
-    const offset = (page - 1) * pageSize
+    const offset = (pageNum - 1) * pageSizeNum
     const listSql = `
       SELECT 
         r.*,
@@ -157,28 +174,43 @@ const reservationService = {
       ORDER BY r.created_at DESC
       LIMIT ? OFFSET ?
     `
-    const listParams = [...params, parseInt(pageSize), offset]
+    const listParams = [...params, pageSizeNum, offset]
     const [list] = await pool.execute(listSql, listParams)
 
     return {
       list,
       total,
-      page: parseInt(page),
-      pageSize: parseInt(pageSize)
+      page: pageNum,
+      pageSize: pageSizeNum
     }
   },
 
   async getMyReservations({ userId, status, page = 1, pageSize = 10 } = {}) {
-    if (!userId) {
-      throw new ServiceError(400, '请提供 userId 参数')
+    if (!userId || typeof userId !== 'string' || userId.trim() === '') {
+      throw new ServiceError(400, '请提供有效的 userId 参数')
     }
 
-    const whereClauses = ['r.reserver_name = ?']
-    const params = [userId]
+    const reserverName = userId.trim()
 
-    if (status !== undefined && status !== '') {
+    const whereClauses = ['r.reserver_name = ?']
+    const params = [reserverName]
+
+    if (status !== undefined && status !== '' && status !== null) {
+      const statusNum = parseInt(status)
+      if (isNaN(statusNum) || statusNum < 1 || statusNum > 3) {
+        throw new ServiceError(400, 'status 参数无效，有效值为 1-3')
+      }
       whereClauses.push('r.status = ?')
-      params.push(parseInt(status))
+      params.push(statusNum)
+    }
+
+    const pageNum = parseInt(page)
+    const pageSizeNum = parseInt(pageSize)
+    if (isNaN(pageNum) || pageNum < 1) {
+      throw new ServiceError(400, 'page 参数无效')
+    }
+    if (isNaN(pageSizeNum) || pageSizeNum < 1 || pageSizeNum > 100) {
+      throw new ServiceError(400, 'pageSize 参数无效，范围 1-100')
     }
 
     const whereSql = `WHERE ${whereClauses.join(' AND ')}`
@@ -187,7 +219,7 @@ const reservationService = {
     const [countResult] = await pool.execute(countSql, params)
     const total = countResult[0].total
 
-    const offset = (page - 1) * pageSize
+    const offset = (pageNum - 1) * pageSizeNum
     const listSql = `
       SELECT 
         r.*,
@@ -205,7 +237,7 @@ const reservationService = {
       ORDER BY r.created_at DESC
       LIMIT ? OFFSET ?
     `
-    const listParams = [...params, parseInt(pageSize), offset]
+    const listParams = [...params, pageSizeNum, offset]
     const [list] = await pool.execute(listSql, listParams)
 
     const listWithStatus = list.map(item => ({
@@ -217,20 +249,31 @@ const reservationService = {
     return {
       list: listWithStatus,
       total,
-      page: parseInt(page),
-      pageSize: parseInt(pageSize)
+      page: pageNum,
+      pageSize: pageSizeNum
     }
   },
 
   async cancelReservation(id) {
-    if (!id) {
+    if (id === undefined || id === null || id === '') {
       throw new ServiceError(400, '请提供预约ID')
     }
 
+    const idStr = String(id)
+    if (!/^\d+$/.test(idStr)) {
+      throw new ServiceError(400, '预约ID格式无效，必须为正整数')
+    }
+
     const reservationId = parseInt(id)
-    const connection = await pool.getConnection()
+    if (isNaN(reservationId) || reservationId <= 0) {
+      throw new ServiceError(400, '预约ID格式无效，必须为正整数')
+    }
+
+    let connection = null
 
     try {
+      connection = await pool.getConnection()
+
       await connection.beginTransaction()
 
       const [reservationRows] = await connection.execute(
@@ -270,13 +313,21 @@ const reservationService = {
         throw err
       }
       if (connection) {
-        await connection.rollback()
+        try {
+          await connection.rollback()
+        } catch (rollbackErr) {
+          console.error('Rollback failed:', rollbackErr)
+        }
       }
       console.error('Cancel reservation service error:', err)
       throw new ServiceError(500, '取消预约失败', err.message)
     } finally {
       if (connection) {
-        connection.release()
+        try {
+          connection.release()
+        } catch (releaseErr) {
+          console.error('Release connection failed:', releaseErr)
+        }
       }
     }
   }
