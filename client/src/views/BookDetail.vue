@@ -195,6 +195,7 @@ const submitReservation = async () => {
       submitting.value = true
       const res = await reservationAPI.create(reservationForm.value)
 
+      localStorage.setItem('bookExchange_user', reservationForm.value.reserver_name)
       ElMessage.success(res.data.message)
 
       book.value.status = 1

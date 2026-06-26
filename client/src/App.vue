@@ -6,6 +6,7 @@
         <el-menu mode="horizontal" :router="true" class="menu">
           <el-menu-item index="/">图书列表</el-menu-item>
           <el-menu-item index="/publish">发布图书</el-menu-item>
+          <el-menu-item index="/my-reservations">我的预约</el-menu-item>
         </el-menu>
       </el-header>
       <el-main class="main">

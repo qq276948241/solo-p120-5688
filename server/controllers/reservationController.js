@@ -264,6 +264,89 @@ const reservationController = {
     } finally {
       connection.release()
     }
+  },
+
+  async getMine(req, res) {
+    try {
+      const {
+        userId,
+        status,
+        page = 1,
+        pageSize = 10
+      } = req.query
+
+      if (!userId) {
+        return res.status(400).json({
+          code: 400,
+          message: '请提供 userId 参数'
+        })
+      }
+
+      const whereClauses = ['r.reserver_name = ?']
+      const params = [userId]
+
+      if (status !== undefined && status !== '') {
+        whereClauses.push('r.status = ?')
+        params.push(parseInt(status))
+      }
+
+      const whereSql = `WHERE ${whereClauses.join(' AND ')}`
+
+      const countSql = `SELECT COUNT(*) as total FROM reservations r ${whereSql}`
+      const [countResult] = await pool.execute(countSql, params)
+      const total = countResult[0].total
+
+      const offset = (page - 1) * pageSize
+      const listSql = `
+        SELECT 
+          r.*,
+          b.title as book_title,
+          b.author as book_author,
+          b.cover_image as book_cover,
+          b.book_condition,
+          b.category,
+          b.owner_name,
+          b.owner_contact,
+          b.status as book_status
+        FROM reservations r
+        LEFT JOIN books b ON r.book_id = b.id
+        ${whereSql}
+        ORDER BY r.created_at DESC
+        LIMIT ? OFFSET ?
+      `
+      const listParams = [...params, parseInt(pageSize), offset]
+      const [list] = await pool.execute(listSql, listParams)
+
+      const statusMap = {
+        1: { text: '待交换', type: 'warning' },
+        2: { text: '已完成', type: 'success' },
+        3: { text: '已取消', type: 'info' }
+      }
+
+      const listWithStatus = list.map(item => ({
+        ...item,
+        status_text: statusMap[item.status]?.text || '未知',
+        status_type: statusMap[item.status]?.type || 'info'
+      }))
+
+      res.json({
+        code: 200,
+        message: 'success',
+        data: {
+          list: listWithStatus,
+          total,
+          page: parseInt(page),
+          pageSize: parseInt(pageSize)
+        }
+      })
+    } catch (err) {
+      console.error('Get my reservations error:', err)
+      res.status(500).json({
+        code: 500,
+        message: '获取我的预约失败',
+        error: err.message
+      })
+    }
   }
 }
 

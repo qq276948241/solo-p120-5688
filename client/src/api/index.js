@@ -23,6 +23,12 @@ export const bookAPI = {
 export const reservationAPI = {
   create(data) {
     return request.post('/reservations', data)
+  },
+  getMine(params) {
+    return request.get('/reservations/mine', { params })
+  },
+  cancel(id) {
+    return request.put(`/reservations/${id}/cancel`)
   }
 }
 
